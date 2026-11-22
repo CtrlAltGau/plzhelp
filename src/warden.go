@@ -1476,7 +1476,7 @@ func (b *Bot) Act(obs *Obs) Action {
 			boost = true
 		}
 		mode = "fight"
-		if fb := b.g["fight_boost"]; fb > 0 && me.Energy > fb && (laser == nil || laser.Charge <= 0) && (light == nil || me.Energy > 60) {
+		if fb := b.g["fight_boost"]; fb > 0 && me.Energy > fb && (laser == nil || laser.Charge <= 0 || b.g["boost_charge"] != 0) && (light == nil || me.Energy > 60) {
 			boost = true
 		}
 		if K["cube_fight_r"] != 0 {

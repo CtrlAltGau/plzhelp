@@ -56,6 +56,7 @@ func globals() map[string]float64 {
 		"hurt_r":         0,
 		"post_keep":      0,
 		"post_depth":     0,
+		"boost_charge":   0,
 		"early_solo_s":   0,
 	}
 }
