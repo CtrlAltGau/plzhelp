@@ -577,8 +577,13 @@ func (b *Bot) appraise(obs *Obs, endgame bool) (best *Contact, vis []*Contact, d
 		} else {
 			hot = d < K["fight_close"] || struck < 4 || (pointedAtUs && e.Charging && d < 120) ||
 				(hp < 350 && d < 120) || obs.Alive <= 2
-			if !hot && b.me.HP > 0.7*b.me.MaxHP {
-				if br := G["busy_r"]; br > 0 && d < br && t-fgetI(b.busyT, e.ID, -99) < 3 {
+			openHP := 0.7
+			if oh := G["open_hp"]; oh > 0 {
+				openHP = oh
+			}
+			if !hot && b.me.HP > openHP*b.me.MaxHP {
+				big := G["avoid_big"] > 0 && obs.Alive > 3 && e.MaxHP != nil && mhp > b.me.MaxHP+G["avoid_big"] && hp > 0.7*mhp
+				if br := G["busy_r"]; br > 0 && d < br && t-fgetI(b.busyT, e.ID, -99) < 3 && !big {
 					hot = true
 				}
 				if wr := G["hurt_r"]; wr > 0 && d < wr && e.HP != nil && hp < 0.5*mhp {
@@ -783,6 +788,18 @@ func (b *Bot) brawlStep(obs *Obs, foe *Actor, vis []*Contact, wantSight, overrid
 			}
 		}
 		sc -= b.zoneCost(&obs.Zone, cx, cy)
+		if ra := b.g["rear_avoid"]; ra > 0 {
+			fx, fy := foe.Pos[0]-cx, foe.Pos[1]-cy
+			for _, e := range vis {
+				if &e.Actor == foe || b.t-e.T > 1 || !(e.hot || b.struckAgo(e.ID) < 4) {
+					continue
+				}
+				ex, ey := e.Pos[0]-cx, e.Pos[1]-cy
+				if math.Hypot(ex, ey) < 170 && ex*fx+ey*fy < 0 {
+					sc -= ra
+				}
+			}
+		}
 		if cube != nil {
 			sc += 1.5 * (flat(cube.Pos, b.pos) - math.Hypot(cube.Pos[0]-cx, cube.Pos[1]-cy))
 		}
@@ -1423,6 +1440,14 @@ func (b *Bot) Act(obs *Obs) Action {
 		if mv, ok := b.takeCover(vis); ok {
 			move, mode = mv, "cover"
 			boost = me.Energy > 10 && moving(mv)
+		} else if target != nil && b.g["flee_laser_s"] > 0 && t < b.g["flee_laser_s"] && laser == nil && target.carries("laser") {
+
+			ax, ay := b.pos[0]-target.Pos[0], b.pos[1]-target.Pos[1]
+			if n := math.Hypot(ax, ay); n > 1e-6 {
+				move = b.goTo(b.pos[0]+ax/n*40, b.pos[1]+ay/n*40)
+			}
+			mode = "flee-laser"
+			boost = me.Energy > 5
 		} else if target != nil {
 			move, mode = b.brawlStep(obs, &target.Actor, vis, 1, 0), "cornered"
 		} else {
@@ -1500,6 +1525,9 @@ func (b *Bot) Act(obs *Obs) Action {
 		if pk := b.pickLoot(obs, hpf, danger); pk != nil {
 			mode = "loot-" + pk.kind
 			d := flat(pk.pos, b.pos)
+			if gs := b.g["gear_sprint_s"]; gs > 0 && pk.kind == "pickup" && t < gs && me.Energy > 30 && d > 8 {
+				boost = true
+			}
 			switch pk.kind {
 			case "drone":
 				dr, ok := b.drones.get(pk.id)
@@ -1535,6 +1563,21 @@ func (b *Bot) Act(obs *Obs) Action {
 					move = Vec2{move[0] * q, move[1] * q}
 				}
 			}
+		}
+	}
+
+	if rd := b.g["roof_drop"]; rd > 0 && hpf < rd && me.Grounded && b.pos[2]-b.L.FloorZ(b.pos[0], b.pos[1]) > 3 &&
+		mode != "escape" && !(mode == "zone" && !me.InZone) {
+		ax, ay := 0.0, 0.0
+		for _, e := range vis {
+			ex, ey := b.pos[0]-e.Pos[0], b.pos[1]-e.Pos[1]
+			if d := math.Hypot(ex, ey); d > 1e-6 && d < 250 {
+				ax, ay = ax+ex/d/math.Max(d, 20), ay+ey/d/math.Max(d, 20)
+			}
+		}
+		if n := math.Hypot(ax, ay); n > 1e-9 {
+			move, mode = Vec2{ax / n, ay / n}, "roof-drop"
+			boost = false
 		}
 	}
 
@@ -1576,7 +1619,7 @@ func (b *Bot) Act(obs *Obs) Action {
 		ftarget = nil
 	}
 	aim, fire, defended := b.fire(ftarget, shootDrone, shootCrate, vis, move, hpf)
-	if target == nil && foe != nil {
+	if target == nil && foe != nil && !(mode == "mend" && b.g["mend_nocharge"] != 0) {
 		for i := 0; i < 2; i++ {
 			w := b.slot(i)
 			if w != nil && w.Kind == "laser" && w.Cooldown <= 0.05 && foe.d < w.st("range", 280) &&

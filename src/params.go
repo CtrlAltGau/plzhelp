@@ -56,6 +56,13 @@ func globals() map[string]float64 {
 		"hurt_r":         0,
 		"post_keep":      0,
 		"post_depth":     0,
+		"flee_laser_s":   0,
+		"avoid_big":      0,
+		"roof_drop":      0,
+		"mend_nocharge":  0,
+		"gear_sprint_s":  0,
+		"open_hp":        0,
+		"rear_avoid":     0,
 		"boost_charge":   0,
 		"early_solo_s":   0,
 	}
